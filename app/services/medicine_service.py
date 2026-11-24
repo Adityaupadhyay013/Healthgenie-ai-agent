@@ -15,7 +15,7 @@ def extract_medicine_query(query: str) -> str:
     text = query.strip()
     patterns = [
         r"\b(please|tell me|show me|give me|find|search|information|details|about|"
-        r"medicine|medicines|medication|medications|drug|drugs|tablet|tablets|"
+        r"what|is|are|used|use|does|do|can|i|take|the|medicine|medicines|medication|medications|drug|drugs|tablet|tablets|"
         r"side effects|uses|of|for)\b",
     ]
     for pattern in patterns:
