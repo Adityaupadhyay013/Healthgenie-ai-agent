@@ -1,19 +1,34 @@
-# HealthGenie AI — FastAPI + LangGraph backend
+# HealthGenie AI — FastAPI, LangGraph and MCP
 
-A demo backend for the HealthGenie AI frontend. LangGraph handles intent routing and safety checks; kidney, liver and heart prediction forms remain frontend routes.
+A demo healthcare-navigation assistant. LangGraph handles emergency-first routing and prediction-form redirects. The kidney, liver and heart ML forms remain frontend-owned. A separate authenticated MCP service exposes read-only medicine-reference and nearby-facility tools.
 
-## Features in this branch
+## Architecture
 
-- Intent routing for kidney/liver/heart prediction redirects, medicine-reference lookup, nearby facilities, and general health questions.
-- Emergency keyword guardrail runs before normal intent routing.
-- Medicine reference lookups against the public **RxNorm** and **DailyMed** REST APIs. These identify drug concepts and official labels; they do not prescribe treatment.
-- Nearby hospital/clinic map listings from OpenStreetMap Overpass, with asynchronous HTTP, approximate distance sorting and explicit verification caveats.
-- Combined medicine-reference + nearby-facility requests.
-- Stable response fields for the existing frontend: `intent`, `message`, `medicines`, `hospital_recommendation`, `action`, and `target`.
+```text
+Lovable / React frontend
+        |
+        | HTTPS /api/chat
+        v
+FastAPI + LangGraph (healthgenie-backend)
+        |
+        | MCP Streamable HTTP + Bearer token
+        v
+HealthGenie MCP service (healthgenie-mcp)
+   |             |               |
+   v             v               v
+ RxNorm       DailyMed        OpenStreetMap
+ drug terms   official labels  Overpass listings
+```
 
-## Run locally (Windows PowerShell)
+The MCP server exposes:
+- `search_medicine_reference(medicine_name_or_ingredient)`
+- `find_nearby_health_facilities(latitude, longitude)`
 
-Use Python 3.11 if available:
+The FastAPI app calls these tools through the official Python MCP SDK when `MCP_SERVER_URL` is configured. If it is blank, local development falls back to the same direct REST adapters. MCP errors are surfaced as safe service failures by the agents; they are not silently converted into made-up results.
+
+## Local setup
+
+Use Python 3.11:
 
 ```powershell
 py -3.11 -m venv .venv
@@ -21,53 +36,68 @@ py -3.11 -m venv .venv
 python -m pip install --upgrade pip
 pip install -r requirements.txt
 Copy-Item .env.example .env
+```
+
+Run the MCP server in terminal 1:
+
+```powershell
+$env:MCP_AUTH_TOKEN = "replace-with-a-long-random-secret"
+uvicorn mcp_server:app --reload --host 127.0.0.1 --port 8001
+```
+
+Run FastAPI in terminal 2 with the same token:
+
+```powershell
+$env:MCP_SERVER_URL = "http://127.0.0.1:8001/mcp"
+$env:MCP_AUTH_TOKEN = "replace-with-a-long-random-secret"
 uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
-If your machine has a different Python launcher/path, create the virtual environment with that installed Python executable. Then open [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs).
+Open:
+- FastAPI docs: http://127.0.0.1:8000/docs
+- FastAPI health: http://127.0.0.1:8000/health
+- MCP health: http://127.0.0.1:8001/health
 
-Example chat request:
+To test the MCP server using the MCP Inspector, configure its Streamable HTTP URL as `http://127.0.0.1:8001/mcp` and supply the HTTP header `Authorization: Bearer <same-token>`. Do not expose an unauthenticated MCP endpoint.
 
-```json
-{
-  "query": "Find hospitals near me",
-  "location_data": {"latitude": 28.6139, "longitude": 77.2090}
-}
-```
+## Render deployment
 
-Or provide a location string such as `"New Delhi, India"`. For best accuracy, pass browser coordinates in `location_data`.
+The included `render.yaml` declares two independent web services from the same repository.
 
-## Environment variables
+1. Deploy the Blueprint from GitHub.
+2. Generate a strong random token locally, for example with Python:
+   ```powershell
+   python -c "import secrets; print(secrets.token_urlsafe(48))"
+   ```
+3. In the Render dashboard, set **the exact same** `MCP_AUTH_TOKEN` value on both services. Do not commit it to GitHub or put it in frontend code.
+4. Set `MCP_SERVER_URL` on the FastAPI service to the MCP service's HTTPS endpoint plus `/mcp`, e.g. `https://healthgenie-mcp.onrender.com/mcp`.
+5. Set `FRONTEND_URL` on FastAPI to the exact deployed Lovable/custom frontend origin.
+6. Optionally set `GEMINI_API_KEY` on FastAPI for LLM-assisted intent classification.
+7. Verify both `/health` endpoints. Then test the MCP connection with a medicine-name query and a nearby-hospital query.
 
-Copy `.env.example` to `.env`. Set `FRONTEND_URL` to the deployed frontend origin (no trailing slash). `GEMINI_API_KEY` is optional; the keyword classifier works without it. Never commit real API keys or patient information.
+Render may place free services to sleep. The first request can be slow while the MCP service wakes up. For a live demo, wake both services before presenting or use an always-on plan.
 
-## Integrations and MCP note
+## MCP protocol and dependencies
 
-The current implementation calls RxNorm, DailyMed, Nominatim and Overpass using their public HTTP APIs directly. **These are not MCP servers and this branch does not yet speak the MCP protocol.** Direct REST calls keep the Render deployment simple and avoid requiring a separately hosted MCP process. If you want actual MCP tool transport, deploy a trusted MCP server separately (or run a local stdio server alongside the backend) and add an MCP client/adapter after verifying the server's transport, tools and hosting requirements. Do not point a production backend at an untrusted public MCP endpoint.
+- Server: FastMCP, mounted as a Streamable HTTP ASGI app.
+- Client: official `mcp` Python SDK using `ClientSession` and `streamable_http_client`.
+- Authentication: service-to-service static bearer token, kept only in server environment variables.
+- The two tools are read-only. Do not add patient-record writes or treatment actions without a separate security and clinical review.
 
-Sources:
+## Data sources and limitations
+
 - RxNorm: https://www.nlm.nih.gov/research/umls/rxnorm/
 - DailyMed: https://dailymed.nlm.nih.gov/dailymed/
-- Nominatim usage policy: https://operations.osmfoundation.org/policies/nominatim/
+- Nominatim policy: https://operations.osmfoundation.org/policies/nominatim/
 - Overpass API: https://wiki.openstreetmap.org/wiki/Overpass_API
 - OpenStreetMap copyright: https://www.openstreetmap.org/copyright
 
-## Deploy to Render
+RxNorm is drug terminology; DailyMed contains US product labeling. They do not establish Indian brand availability or Indian regulatory labeling. The medicine tool searches an exact medicine name or ingredient and returns reference matches and source links only; it does not recommend drugs for symptoms or provide doses.
 
-1. Create a Render Web Service or Blueprint from this repository.
-2. Set `FRONTEND_URL` to your Lovable/custom frontend's exact origin.
-3. Add `GEMINI_API_KEY` only if you want LLM-assisted intent classification.
-4. Deploy and verify `/health` and `/docs`.
+OpenStreetMap facilities can be incomplete, outdated or incorrectly tagged. Specialist departments, current operating status, emergency services, hours and phone numbers are not verified. Call a facility before travelling.
 
-The included `render.yaml` does not require kidney/liver/heart model URLs because those prediction forms are frontend-owned in the current architecture.
+## Safety and privacy
 
-## Important safety and data limitations
+This is an educational prototype, not a medical device or clinically validated triage system. Emergency keyword matching is incomplete and can miss emergencies or raise false alarms. If symptoms may be life-threatening, contact local emergency services immediately; in India call **112**. Never delay emergency care to use this assistant.
 
-- This is an educational prototype, not a medical device or clinically validated triage system.
-- Emergency phrase matching is incomplete and can miss emergencies or raise false alarms. If symptoms may be life-threatening, contact local emergency services immediately. In India, dial **112**.
-- HealthGenie must not select a drug or dose from symptoms. RxNorm is drug terminology; DailyMed contains US product labeling. They are not a personalized treatment recommendation and may not represent Indian brand availability or Indian regulatory labeling.
-- The medicine lookup is intended for an exact medicine name or active ingredient. A matching search result does not prove that a medicine is suitable for a person.
-- OpenStreetMap facility listings may be incomplete, outdated or incorrectly tagged. Department/specialist availability, emergency capability, opening hours and phone numbers are not verified. Call the facility before travelling.
-- Public geocoding/map services have usage policies, rate limits and availability constraints. Cache responsibly and do not overload shared public services.
-- Do not send identifiable patient health information to an external LLM or third-party API without appropriate consent, privacy safeguards and legal review.
-- Prediction outputs are not confirmed diagnoses. Have a qualified healthcare professional interpret them.
+Do not send identifiable patient health information to an external LLM or third-party service without appropriate consent, privacy safeguards and legal review. Prediction outputs are not diagnoses. A qualified healthcare professional must interpret them.

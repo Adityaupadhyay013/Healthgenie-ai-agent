@@ -1,4 +1,5 @@
 services:
+  # FastAPI + LangGraph application
   - type: web
     name: healthgenie-backend
     runtime: python
@@ -14,4 +15,24 @@ services:
       - key: FRONTEND_URL
         sync: false
       - key: GEMINI_API_KEY
+        sync: false
+      - key: MCP_SERVER_URL
+        sync: false
+      - key: MCP_AUTH_TOKEN
+        sync: false
+
+  # Separate authenticated MCP service from the same repository
+  - type: web
+    name: healthgenie-mcp
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn mcp_server:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11.11"
+      - key: ENVIRONMENT
+        value: production
+      - key: MCP_AUTH_TOKEN
         sync: false
