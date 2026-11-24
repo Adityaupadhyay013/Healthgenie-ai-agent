@@ -2,6 +2,9 @@ import math
 import httpx
 from app.config import settings
 
+USER_AGENT = "HealthGenieAI/1.0 (educational healthcare navigation project)"
+
+
 def haversine_distance(lat1, lon1, lat2, lon2):
     radius_km = 6371.0
     dlat = math.radians(lat2 - lat1)
@@ -10,9 +13,15 @@ def haversine_distance(lat1, lon1, lat2, lon2):
          math.cos(math.radians(lat2)) * math.sin(dlon / 2) ** 2)
     return 2 * radius_km * math.asin(math.sqrt(a))
 
+
+def validate_coordinates(latitude: float, longitude: float):
+    if not (-90 <= latitude <= 90 and -180 <= longitude <= 180):
+        raise ValueError("Latitude or longitude is outside the valid range.")
+
+
 async def geocode_location(address: str):
-    headers = {"User-Agent": "HealthGenieAI-demo/1.0 (contact: project-owner)"}
-    async with httpx.AsyncClient(timeout=15) as client:
+    headers = {"User-Agent": USER_AGENT}
+    async with httpx.AsyncClient(timeout=httpx.Timeout(12.0, connect=5.0)) as client:
         response = await client.get(
             settings.NOMINATIM_URL,
             params={"q": address, "format": "jsonv2", "limit": 1},
@@ -24,21 +33,24 @@ async def geocode_location(address: str):
         return None
     return {"latitude": float(results[0]["lat"]), "longitude": float(results[0]["lon"])}
 
-def find_nearby_hospitals(latitude: float, longitude: float):
-    radius_m = settings.HOSPITAL_SEARCH_RADIUS_KM * 1000
-    query = f"""[out:json][timeout:25];
-    (node["amenity"="hospital"](around:{radius_m},{latitude},{longitude});
-     way["amenity"="hospital"](around:{radius_m},{latitude},{longitude});
-     relation["amenity"="hospital"](around:{radius_m},{latitude},{longitude});
-     node["amenity"="clinic"](around:{radius_m},{latitude},{longitude});
-     way["amenity"="clinic"](around:{radius_m},{latitude},{longitude}););
+
+async def find_nearby_hospitals(latitude: float, longitude: float):
+    validate_coordinates(latitude, longitude)
+    radius_m = max(1000, min(settings.HOSPITAL_SEARCH_RADIUS_KM, 50)) * 1000
+    query = f"""[out:json][timeout:20];
+    (node["amenity"~"^(hospital|clinic)$"](around:{radius_m},{latitude},{longitude});
+     way["amenity"~"^(hospital|clinic)$"](around:{radius_m},{latitude},{longitude});
+     relation["amenity"="hospital"](around:{radius_m},{latitude},{longitude}););
     out center tags;"""
-    headers = {"User-Agent": "HealthGenieAI-demo/1.0 (contact: project-owner)"}
-    with httpx.Client(timeout=35) as client:
-        response = client.post(settings.OVERPASS_URL, data={"data": query}, headers=headers)
+    headers = {"User-Agent": USER_AGENT}
+    timeout = httpx.Timeout(25.0, connect=8.0)
+    async with httpx.AsyncClient(timeout=timeout, headers=headers) as client:
+        response = await client.post(settings.OVERPASS_URL, data={"data": query})
         response.raise_for_status()
         data = response.json()
-    hospitals = []
+
+    facilities = []
+    seen = set()
     for item in data.get("elements", []):
         tags = item.get("tags", {})
         lat, lon = item.get("lat"), item.get("lon")
@@ -47,15 +59,25 @@ def find_nearby_hospitals(latitude: float, longitude: float):
             lat, lon = center.get("lat"), center.get("lon")
         if lat is None or lon is None:
             continue
-        distance = haversine_distance(latitude, longitude, float(lat), float(lon))
-        hospitals.append({
+        lat, lon = float(lat), float(lon)
+        key = (tags.get("name", "").strip().lower(), round(lat, 5), round(lon, 5))
+        if key in seen:
+            continue
+        seen.add(key)
+        distance = haversine_distance(latitude, longitude, lat, lon)
+        facilities.append({
             "name": tags.get("name", "Unnamed facility"),
             "type": tags.get("amenity"),
-            "address": ", ".join(filter(None, [tags.get("addr:street"), tags.get("addr:city"), tags.get("addr:postcode")])),
-            "latitude": float(lat), "longitude": float(lon),
+            "address": ", ".join(filter(None, [
+                tags.get("addr:street"), tags.get("addr:city"), tags.get("addr:postcode")
+            ])),
+            "latitude": lat,
+            "longitude": lon,
             "distance_km": round(distance, 2),
             "specialty_verified": False,
+            "listing_source": "OpenStreetMap",
+            "verification_note": "Map listing only. Call the facility to confirm operating status, emergency services, departments, and specialist availability.",
             "map_url": f"https://www.openstreetmap.org/?mlat={lat}&mlon={lon}",
         })
-    hospitals.sort(key=lambda x: x["distance_km"])
-    return hospitals[:10]
+    facilities.sort(key=lambda item: item["distance_km"])
+    return facilities[:10]

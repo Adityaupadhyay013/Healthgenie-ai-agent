@@ -1,5 +1,6 @@
 from typing import Any, Dict, List, Optional, TypedDict
 
+
 class HealthGenieState(TypedDict, total=False):
     query: str
     location: Optional[str]
@@ -11,7 +12,7 @@ class HealthGenieState(TypedDict, total=False):
     emergency_flag: bool
     matched_indicators: List[str]
     prediction_result: Optional[Dict[str, Any]]
-    medicines: List[str]
+    medicines: List[Dict[str, Any]]
     medicine_details: List[Dict[str, Any]]
     medication_safety_flags: List[str]
     safety_flags: List[str]

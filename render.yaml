@@ -15,9 +15,3 @@ services:
         sync: false
       - key: GEMINI_API_KEY
         sync: false
-      - key: KIDNEY_MODEL_URL
-        sync: false
-      - key: LIVER_MODEL_URL
-        sync: false
-      - key: HEART_MODEL_URL
-        sync: false

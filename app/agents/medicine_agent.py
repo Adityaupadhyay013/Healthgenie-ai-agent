@@ -1,38 +1,45 @@
-from app.services.medicine_service import load_medicine_database, search_medicines
+from app.services.medicine_service import search_medicine_references
 
-def medicine_agent(state):
-    query = state.get("query", "").lower()
-    prediction = state.get("prediction_result") or {}
-    disease = prediction.get("disease", "")
-    if not disease:
-        for record in load_medicine_database():
-            for condition in record.get("conditions", []):
-                if condition.lower() in query:
-                    disease = condition
-                    break
-            if disease:
-                break
-    if not disease:
-        return {
-            "medicines": [], "medicine_details": [],
-            "message": "Please specify the medical condition for which you want medicine information. HealthGenie does not prescribe medicines.",
-            "review_required": True,
-        }
-    records = search_medicines(disease)
+
+async def medicine_agent(state):
+    query = state.get("query", "")
+    try:
+        result = await search_medicine_references(query)
+    except Exception:
+        result = {"query": "", "medicines": [], "sources": []}
+
+    medicines = result.get("medicines", [])
+    sources = result.get("sources", [])
+    if not result.get("query"):
+        message = (
+            "Tell me the exact medicine or active ingredient you want to learn about. "
+            "I can retrieve reference information and official labels, but I cannot "
+            "select a medicine for symptoms or prescribe treatment."
+        )
+    elif medicines or sources:
+        message = (
+            "I found medicine-reference matches and/or official product-label sources. "
+            "Check that the active ingredient and formulation match your package. "
+            "This is reference information, not a recommendation or prescription; "
+            "ask a qualified clinician or pharmacist whether it is appropriate for you."
+        )
+    else:
+        message = (
+            "I could not find a matching record in the connected medicine references. "
+            "Try the exact generic name or active ingredient. HealthGenie does not "
+            "recommend medicines based on symptoms."
+        )
+
     return {
-        "medicines": [x["generic_name"] for x in records if x.get("generic_name")],
-        "medicine_details": records,
-        "message": (
-            "The following medicine information was retrieved from the curated catalogue. "
-            "It is not a prescription. A qualified clinician must decide whether treatment is appropriate."
-            if records else "No clinically reviewed medicine records are currently available for this condition."
-        ),
+        "medicines": medicines,
+        "medicine_details": medicines,
+        "message": message,
         "review_required": True,
         "medication_safety_flags": [
-            "Check allergies and current medications.",
-            "Check contraindications and drug interactions.",
-            "Review relevant laboratory results and patient history.",
-            "A qualified clinician must approve treatment decisions.",
+            "Do not start, stop, or change a medicine based only on this assistant.",
+            "Confirm the exact ingredient, strength, and formulation with a pharmacist.",
+            "Check allergies, pregnancy status where relevant, current medicines, and contraindications with a clinician.",
+            "Seek urgent care for severe or rapidly worsening symptoms.",
         ],
-        "sources": [{"title": x.get("source_title", "Clinical source"), "url": x.get("source_url", "")} for x in records if x.get("source_url")],
+        "sources": sources,
     }

@@ -9,7 +9,7 @@ def response_agent(state):
         "action": state.get("action", "suggest"),
         "target": state.get("target", ""),
         "emergency_flag": state.get("emergency_flag", False),
-        "safety_flags": state.get("medication_safety_flags", []),
+        "safety_flags": state.get("medication_safety_flags", state.get("safety_flags", [])),
         "review_required": state.get("review_required", False),
         "sources": state.get("sources", []),
         "errors": state.get("errors", []),
