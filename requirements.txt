@@ -7,3 +7,6 @@ pydantic>=2.7,<3
 pydantic-settings>=2.4,<3
 python-dotenv>=1,<2
 httpx>=0.27,<1
+# MCP server + official Python MCP client SDK (v1 API line)
+fastmcp>=2.14,<3
+mcp>=1.9,<2
