@@ -1,5 +1,6 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+
 class Settings(BaseSettings):
     APP_NAME: str = "HealthGenie AI"
     ENVIRONMENT: str = "development"
@@ -13,6 +14,9 @@ class Settings(BaseSettings):
     KIDNEY_MODEL_URL: str = ""
     LIVER_MODEL_URL: str = ""
     HEART_MODEL_URL: str = ""
+    MCP_SERVER_URL: str = ""
+    MCP_AUTH_TOKEN: str = ""
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
 
 settings = Settings()
