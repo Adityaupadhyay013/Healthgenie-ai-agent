@@ -22,14 +22,54 @@ def prediction_redirect_agent(state):
 
 
 def general_health_agent(state):
+    """Answer ordinary health questions conversationally without diagnosing or prescribing."""
+    query = (state.get("query") or "").strip()
+    fallback_message = (
+        "I'm sorry you're not feeling well. I can share general health information, "
+        "but I can't diagnose a condition or choose a medicine for you. "
+        "Please tell me when the symptom started, how severe it is, and whether "
+        "you have any other symptoms. If symptoms are severe, rapidly worsening, "
+        "or you feel seriously unwell, seek medical care promptly."
+    )
+
+    try:
+        from app.services.llm import get_llm
+        llm = get_llm()
+        if llm and query:
+            prompt = (
+                "You are HealthGenie AI, a cautious general health information assistant. "
+                "Respond directly and empathetically to the user's actual message; never "
+                "repeat a generic product introduction. You are not a clinician. Do not "
+                "diagnose, prescribe, select a medicine, or give medication dosages. "
+                "If asked which medicine to take for a symptom, explain that you cannot "
+                "select a medicine and recommend checking with a qualified pharmacist or "
+                "clinician, especially considering allergies, existing conditions, and "
+                "other medicines. Still provide useful low-risk general self-care guidance "
+                "when appropriate, plus clear warning signs for seeking medical attention. "
+                "Ask one or two relevant follow-up questions. Do not overstate certainty. "
+                "For fever, suggest measuring temperature, fluids, rest, and medical review "
+                "for persistent/high fever or concerning symptoms. For a mild headache, "
+                "mention hydration, rest, and reducing screen strain if appropriate. "
+                "For emergency warning signs, tell the user to contact emergency services. "
+                "Keep the answer concise, readable, and tailored to the exact query.\n"
+                f"User message: {query}"
+            )
+            result = llm.invoke(prompt)
+            answer = str(result.content).strip()
+            if answer:
+                return {
+                    "message": answer,
+                    "action": "suggest",
+                    "review_required": True,
+                }
+    except Exception:
+        # The deterministic fallback below keeps the chat available if the LLM fails.
+        pass
+
     return {
-        "message": (
-            "Hello! I'm HealthGenie AI. I can provide general health information, "
-            "help you navigate disease prediction forms, retrieve medicine reference "
-            "information by medicine name, and find nearby healthcare facilities. "
-            "I cannot diagnose or prescribe treatment."
-        ),
+        "message": fallback_message,
         "action": "suggest",
+        "review_required": True,
     }
 
 
