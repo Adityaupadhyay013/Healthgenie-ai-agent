@@ -1,9 +1,10 @@
 """MCP client used by deterministic LangGraph service nodes.
 
-MCP_SERVER_URL must be the full Streamable HTTP endpoint, e.g. https://service.onrender.com/mcp.
-When unset, local development uses the same direct source adapters.
+MCP_SERVER_URL must be the full Streamable HTTP endpoint, e.g.
+https://service.onrender.com/mcp.
 """
 import json
+
 from app.config import settings
 
 
@@ -36,20 +37,18 @@ async def call_mcp_tool(tool_name: str, arguments: dict) -> dict | None:
     if not settings.MCP_AUTH_TOKEN:
         raise RuntimeError("MCP_SERVER_URL is set but MCP_AUTH_TOKEN is missing.")
 
+    # This repository pins the MCP Python SDK 1.x API used by FastMCP 2.x.
     from mcp import ClientSession
-    from mcp.client.streamable_http import streamable_http_client
-    import httpx
+    from mcp.client.streamable_http import streamablehttp_client
 
-    timeout = httpx.Timeout(30.0, connect=10.0, read=45.0)
-    async with httpx.AsyncClient(
-        headers={"Authorization": f"Bearer {settings.MCP_AUTH_TOKEN}"},
-        timeout=timeout,
-    ) as http_client:
-        async with streamable_http_client(
-            settings.MCP_SERVER_URL,
-            http_client=http_client,
-        ) as (read_stream, write_stream):
-            async with ClientSession(read_stream, write_stream) as session:
-                await session.initialize()
-                result = await session.call_tool(tool_name, arguments=arguments)
-                return _decode_tool_result(result)
+    headers = {"Authorization": f"Bearer {settings.MCP_AUTH_TOKEN}"}
+    async with streamablehttp_client(
+        settings.MCP_SERVER_URL,
+        headers=headers,
+        timeout=30,
+        sse_read_timeout=45,
+    ) as (read_stream, write_stream, _get_session_id):
+        async with ClientSession(read_stream, write_stream) as session:
+            await session.initialize()
+            result = await session.call_tool(tool_name, arguments=arguments)
+            return _decode_tool_result(result)
