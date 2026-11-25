@@ -10,12 +10,20 @@ class HealthGenieUnitTests(unittest.TestCase):
     def test_medicine_intent(self):
         self.assertEqual(fallback_intent("Tell me about paracetamol side effects"), "medicine_information")
 
-    def test_combined_intent(self):
-        # Hospital search is the current canonical intent for this combined query.
+    def test_hospital_only_query_does_not_trigger_medicine_lookup(self):
+        self.assertEqual(fallback_intent("Suggest me some hospitals near me"), "hospital_search")
+
+    def test_hospital_query_with_older_medicine_context_stays_hospital_only(self):
+        self.assertEqual(fallback_intent("Find hospitals near me"), "hospital_search")
+
+    def test_explicit_combined_query(self):
         self.assertEqual(
             fallback_intent("Tell me about ibuprofen and find nearby hospitals"),
-            "hospital_search",
+            "healthcare_search",
         )
+
+    def test_symptom_medicine_request(self):
+        self.assertEqual(fallback_intent("Suggest me some medicines for fever"), "general_health")
 
     def test_prediction_intent(self):
         self.assertEqual(fallback_intent("Open the kidney prediction form"), "kidney_prediction")
