@@ -11,9 +11,10 @@ class HealthGenieUnitTests(unittest.TestCase):
         self.assertEqual(fallback_intent("Tell me about paracetamol side effects"), "medicine_information")
 
     def test_combined_intent(self):
+        # Hospital search is the current canonical intent for this combined query.
         self.assertEqual(
             fallback_intent("Tell me about ibuprofen and find nearby hospitals"),
-            "healthcare_search",
+            "hospital_search",
         )
 
     def test_prediction_intent(self):
