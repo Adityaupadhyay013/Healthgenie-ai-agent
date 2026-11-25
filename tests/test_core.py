@@ -18,12 +18,14 @@ class HealthGenieUnitTests(unittest.TestCase):
 
     def test_explicit_combined_query(self):
         self.assertEqual(
-            fallback_intent("Tell me about ibuprofen and find nearby hospitals"),
+            fallback_intent("Tell me about ibuprofen side effects and find nearby hospitals"),
             "healthcare_search",
         )
 
     def test_symptom_medicine_request(self):
         self.assertEqual(fallback_intent("Suggest me some medicines for fever"), "general_health")
+        self.assertEqual(fallback_intent("Suggest a medicine for nausea"), "general_health")
+        self.assertEqual(fallback_intent("Recommend medicine for headache"), "general_health")
 
     def test_prediction_intent(self):
         self.assertEqual(fallback_intent("Open the kidney prediction form"), "kidney_prediction")
