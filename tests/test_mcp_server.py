@@ -17,14 +17,16 @@ class MCPServerTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("find_nearby_health_facilities", names)
 
     def test_health_route_is_public(self):
-        with TestClient(app) as client:
-            response = client.get("/health")
+        # Do not enter TestClient's lifespan: FastMCP's streamable HTTP
+        # session manager is single-use and the next test also exercises app.
+        client = TestClient(app)
+        response = client.get("/health")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["status"], "healthy")
 
     def test_mcp_route_rejects_missing_bearer_token(self):
-        with TestClient(app) as client:
-            response = client.post("/mcp", json={})
+        client = TestClient(app)
+        response = client.post("/mcp", json={})
         self.assertEqual(response.status_code, 401)
 
 
